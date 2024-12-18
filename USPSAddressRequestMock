@@ -1,0 +1,49 @@
+@isTest
+public class USPSAddressRequestMock implements HttpCalloutMock {
+  public HTTPResponse respond(HTTPRequest req) {
+    HttpResponse res = new HttpResponse();
+    if (req.getEndpoint().contains('invalid_request')) {
+      res.setHeader('Content-Type', 'application/json');
+      res.setBody(
+        '{"apiVersion": "/addresses/v3/", "error": {"code": "400", "message": "Address Not Found.", "errors": [{"title": "Bad request", "detail": "Address Not Found.", "source": "API"}]}}'
+      );
+      res.setStatusCode(400);
+    } else {
+      String body = createJSONBody();
+      res.setHeader('Content-Type', 'application/json');
+      res.setBody(body);
+      res.setStatusCode(200);
+    }
+    return res;
+  }
+
+  public static String createJSONBody() {
+    String body;
+    body = '{';
+    body += '"firm": null,';
+    body += '"address": {';
+    body += '"streetAddress":"9246 LIGHTWAVE AVE STE 201",';
+    body += '"streetAddressAbbreviation":null,';
+    body += '"secondaryAddress":null,';
+    body += '"city":"SAN DIEGO",';
+    body += '"state":"CA",';
+    body += '"postalCode":null,';
+    body += '"province":null,';
+    body += '"ZIPCode":"92123",';
+    body += '"ZIPPlus4":"6411"';
+    body += '},';
+    body += '"additionalInfo": {';
+    body += '"deliveryPoint":"76",';
+    body += '"carrierRoute":"C038",';
+    body += '"DPVConfirmation":"Y",';
+    body += '"DPVCMRA":"N",';
+    body += '"business":"N",';
+    body += '"centralDeliveryPoint":"N",';
+    body += '"vacant":"N"';
+    body += '},';
+    body += '"corrections": null,';
+    body += '"matches": null';
+    body += '}';
+    return body;
+  }
+}
