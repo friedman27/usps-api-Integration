@@ -1,0 +1,174 @@
+public without sharing class USPSAddressRequest {
+  private static final String NAMED_CREDENTIAL = 'USPS_Addresses_API';
+
+  @invocableMethod(
+    label='Validate Address'
+    description='Returns USPS formatted address'
+  )
+  public static List<Address> validateAddress(List<Address> inputAddresses) {
+    List<Address> updatedAddresses = new List<Address>();
+    for (Address inputAddress : inputAddresses) {
+      Boolean validInput = validateInput(inputAddress);
+      if (!validInput) {
+        updatedAddresses.add(inputAddress);
+        System.debug('Bad address input: ' + inputAddress);
+        continue;
+      }
+      String queryParameters = buildQueryParameters(inputAddress);
+      try {
+        HttpResponse res = makeHttpRequest(queryParameters);
+        Address updatedAddress = processResponse(res);
+        if (updatedAddress != null) {
+          if (String.isNotBlank(updatedAddress.streetAddress)) {
+            updatedAddress.streetAddress = StringUtils.capitalizeAllWords(
+              updatedAddress.streetAddress.toLowerCase()
+            );
+          }
+          if (String.isNotBlank(updatedAddress.city)) {
+            updatedAddress.city = StringUtils.capitalizeAllWords(
+              updatedAddress.city.toLowerCase()
+            );
+          }
+          if (String.isNotBlank(updatedAddress.country)) {
+            updatedAddress.country = StringUtils.capitalizeAllWords(
+              updatedAddress.country.toLowerCase()
+            );
+          }
+          updatedAddresses.add(updatedAddress);
+        } else {
+          updatedAddresses.add(inputAddress);
+        }
+      } catch (Exception e) {
+        System.debug('Exception: ' + e.getMessage());
+        Support_Ticket.apexException(
+          e,
+          'USPSAddressRequest',
+          'validateAddress'
+        );
+        updatedAddresses.add(inputAddress);
+      }
+    }
+    return updatedAddresses;
+  }
+
+  // Return true if the address input is valid and will be accepted by the USPS API
+  private static Boolean validateInput(Address inputAddress) {
+    Boolean isZipNumeric = true;
+    if (String.isNotBlank(inputAddress.zip)) {
+      Pattern zipPattern = Pattern.compile('\\d+');
+      Matcher zipMatcher = zipPattern.matcher(inputAddress.zip);
+      isZipNumeric = zipMatcher.matches();
+    }
+    if (
+      // Must provide street, state, and city or zip. Only can validate US addresses. State must be 2 chars.
+      String.isBlank(inputAddress.streetAddress) ||
+      String.isBlank(inputAddress.state) ||
+      inputAddress.state?.length() != 2 ||
+      (String.isBlank(inputAddress.city) && String.isBlank(inputAddress.zip)) ||
+      !isZipNumeric ||
+      (String.isNotBlank(inputAddress.zip) &&
+      (Integer.valueOf(inputAddress.zip) < 501 ||
+      Integer.valueOf(inputAddress.zip) > 99950)) ||
+      (String.isNotBlank(inputAddress.country) &&
+      inputAddress.country != 'United States')
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  private static String buildQueryParameters(Address inputAddress) {
+    String queryParameters = '?';
+    if (String.isNotBlank(inputAddress.streetAddress)) {
+      queryParameters +=
+        'streetAddress=' +
+        EncodingUtil.urlEncode(inputAddress.streetAddress, 'UTF-8');
+    }
+    if (String.isNotBlank(inputAddress.city)) {
+      queryParameters +=
+        '&city=' + EncodingUtil.urlEncode(inputAddress.city, 'UTF-8');
+    }
+    if (String.isNotBlank(inputAddress.state)) {
+      queryParameters +=
+        '&state=' +
+        EncodingUtil.urlEncode(inputAddress.state.toUpperCase(), 'UTF-8');
+    }
+    if (String.isNotBlank(inputAddress.zip)) {
+      queryParameters +=
+        '&ZIPCode=' + EncodingUtil.urlEncode(inputAddress.zip, 'UTF-8');
+    }
+    queryParameters.replace('+', '%20');
+    return queryParameters;
+  }
+
+  private static HttpResponse makeHttpRequest(String queryParameters) {
+    HttpRequest req = new HttpRequest();
+    req.setEndpoint(
+      'callout:' + NAMED_CREDENTIAL + '/v3/address' + queryParameters
+    );
+    req.setMethod('GET');
+    req.setHeader('Content-Type', 'application/json');
+    Http http = new Http();
+    HttpResponse res = http.send(req);
+    return res;
+  }
+
+  private static Address processResponse(HttpResponse res) {
+    Address deserializedAddress = new Address();
+    if (res != null) {
+      String responseBody = res.getBody();
+      Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(
+        responseBody
+      );
+      if (res.getStatusCode() == 200) {
+        Map<String, Object> addressMap = (Map<String, Object>) responseMap.get(
+          'address'
+        );
+        deserializedAddress.streetAddress = (String) addressMap.get(
+          'streetAddress'
+        );
+        deserializedAddress.streetAddressAbbreviation = (String) addressMap.get(
+          'streetAddressAbbreviation'
+        );
+        deserializedAddress.secondaryAddress = (String) addressMap.get(
+          'secondaryAddress'
+        );
+        deserializedAddress.city = (String) addressMap.get('city');
+        deserializedAddress.state = (String) addressMap.get('state');
+        deserializedAddress.zip = (String) addressMap.get('ZIPCode');
+        deserializedAddress.zipPlus4 = (String) addressMap.get('ZIPPlus4');
+        deserializedAddress.statusCode = String.valueOf(res.getStatusCode());
+      } else {
+        System.debug('Failed with status code: ' + res.getStatusCode());
+        Map<String, Object> errorMap = (Map<String, Object>) responseMap.get(
+          'error'
+        );
+        deserializedAddress.statusCode = String.valueOf(res.getStatusCode());
+        deserializedAddress.error = (String) errorMap.get('message');
+      }
+    }
+    return deserializedAddress;
+  }
+
+  public class Address {
+    @InvocableVariable
+    public String streetAddress;
+    public String streetAddressAbbreviation;
+    @InvocableVariable
+    public String secondaryAddress;
+    @InvocableVariable
+    public String city;
+    @InvocableVariable
+    public String state;
+    @InvocableVariable
+    public String zip;
+    @InvocableVariable
+    public String zipPlus4;
+    @InvocableVariable
+    public String country;
+    @InvocableVariable
+    public String statusCode;
+    @InvocableVariable
+    public String error;
+  }
+}
