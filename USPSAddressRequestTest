@@ -1,0 +1,63 @@
+@isTest
+public class USPSAddressRequestTest {
+  @isTest
+  static void testCallout() {
+    List<USPSAddressRequest.Address> inputAddresses = new List<USPSAddressRequest.Address>();
+    USPSAddressRequest.Address a = new USPSAddressRequest.Address();
+    a.streetAddress = '9246 Lightwave';
+    a.city = 'San Diego';
+    a.state = 'CA';
+    a.zip = '92123';
+    a.country = 'United States';
+    inputAddresses.add(a);
+
+    Test.setMock(HttpCalloutMock.class, new USPSAddressRequestMock());
+    Test.startTest();
+    List<USPSAddressRequest.Address> updatedAddresses = USPSAddressRequest.validateAddress(
+      inputAddresses
+    );
+    Test.stopTest();
+    List<Support_Ticket__c> exceptions = [
+      SELECT Id, Subject__c
+      FROM Support_Ticket__c
+    ];
+    Assert.isTrue(exceptions.isEmpty(), 'Exception was thrown.');
+    // Test success response
+    Assert.AreEqual(
+      1,
+      updatedAddresses.size(),
+      'There should be one updated address.'
+    );
+    USPSAddressRequest.Address updatedAddress = updatedAddresses[0];
+    Assert.AreEqual(
+      '9246 Lightwave Ave Ste 201',
+      updatedAddress.streetAddress,
+      'Street address should match.'
+    );
+    Assert.AreEqual('San Diego', updatedAddress.city, 'City should match.');
+    Assert.AreEqual('CA', updatedAddress.state, 'State should match.');
+    Assert.AreEqual('92123', updatedAddress.zip, 'ZIP code should match.');
+    Assert.AreEqual(
+      '200',
+      updatedAddress.statusCode,
+      'Status code should be 200.'
+    );
+
+    // Test error response
+    a.streetAddress = 'invalid_request';
+    inputAddresses.clear();
+    inputAddresses.add(a);
+    updatedAddresses = USPSAddressRequest.validateAddress(inputAddresses);
+    updatedAddress = updatedAddresses[0];
+    Assert.AreEqual(
+      'Address Not Found.',
+      updatedAddress.error,
+      'Error should match.'
+    );
+    Assert.AreEqual(
+      '400',
+      updatedAddress.statusCode,
+      'Status code should be 400.'
+    );
+  }
+}
